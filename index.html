@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <title>Lojistik Kontrol Kulesi</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
+  
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    body { display: flex; height: 100vh; background: #0f172a; color: #f8fafc; overflow: hidden; }
+    
+    #sidebar { width: 420px; background: #1e293b; border-right: 1px solid #334155; display: flex; flex-direction: column; z-index: 1000; box-shadow: 4px 0 15px rgba(0,0,0,0.5); }
+    .header { background: #0f172a; padding: 14px; border-bottom: 1px solid #334155; }
+    .header h1 { font-size: 14px; font-weight: 700; color: #f97316; display: flex; align-items: center; justify-content: space-between; }
+    
+    .clock-banner { background: #ea580c20; border: 1px solid #ea580c80; padding: 8px 12px; border-radius: 6px; margin-top: 10px; display: flex; justify-content: space-between; align-items: center; }
+    .clock-title { font-size: 10px; color: #94a3b8; text-transform: uppercase; font-weight: 600; }
+    .clock-value { font-size: 14px; font-weight: bold; color: #f97316; font-family: monospace; }
+
+    .kpi-container { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin-top: 10px; }
+    .kpi-card { background: #1e293b; border: 1px solid #334155; padding: 8px; border-radius: 6px; text-align: center; }
+    .kpi-title { font-size: 9px; color: #94a3b8; text-transform: uppercase; }
+    .kpi-value { font-size: 14px; font-weight: bold; color: #f97316; margin-top: 2px; }
+
+    .controls { padding: 10px; border-bottom: 1px solid #334155; }
+    .search-input { width: 100%; background: #0f172a; border: 1px solid #475569; padding: 8px; border-radius: 6px; color: white; font-size: 12px; outline: none; }
+
+    .vehicle-list { overflow-y: auto; flex: 1; padding: 10px; }
+    
+    .card { background: #334155; border: 1px solid #475569; border-radius: 8px; padding: 10px; margin-bottom: 10px; transition: all 0.2s ease; cursor: pointer; }
+    .card:hover, .card.selected { border-color: #f97316; background: #3d4d63; }
+    .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+    .plaka { font-weight: 700; font-size: 12px; color: #f1f5f9; background: #0f172a; padding: 2px 6px; border-radius: 4px; border: 1px solid #475569; }
+    .vehicle-type { font-size: 10px; color: #94a3b8; font-weight: 600; text-transform: uppercase; }
+    
+    .status-pill { font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: bold; }
+    .status-yolda { background: #10b98120; color: #34d399; border: 1px solid #10b98180; }
+
+    .card-body { font-size: 11px; color: #cbd5e1; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 8px; }
+    
+    .progress-container { background: #1e293b; border-radius: 6px; padding: 6px; }
+    .progress-bar-bg { background: #475569; height: 5px; border-radius: 3px; overflow: hidden; margin-top: 4px; }
+    .progress-bar-fill { background: linear-gradient(90deg, #f97316, #fbbf24); height: 100%; width: 0%; transition: width 0.3s ease; }
+    .eta-text { display: flex; justify-content: space-between; font-size: 10px; font-weight: 600; color: #f97316; }
+
+    #map { flex: 1; height: 100vh; background: #e5e3df; }
+    .leaflet-routing-container { display: none !important; }
+
+    .ty-side-truck { display: flex; align-items: flex-end; position: relative; padding-bottom: 6px; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.4)); transform: translate(-50%, -50%); }
+    .ty-side-dorse { position: relative; width: 58px; height: 28px; background: #ffffff; border: 2px solid #ea580c; border-radius: 3px 0 0 2px; display: flex; align-items: center; justify-content: center; padding: 2px; }
+    .ty-side-logo { font-size: 8px; font-weight: 900; color: #0f172a; line-height: 1; text-align: center; font-family: sans-serif; }
+    .ty-side-logo span { color: #ea580c; display: block; font-size: 7px; }
+    .ty-side-kabin { position: relative; width: 18px; height: 24px; background: #ffffff; border: 2px solid #ea580c; border-left: 1px solid #ccc; border-radius: 0 6px 3px 0; display: flex; flex-direction: column; justify-content: flex-start; align-items: flex-end; padding-top: 3px; padding-right: 2px; }
+    .ty-side-window { width: 10px; height: 9px; background: #0f172a; border-radius: 0 4px 1px 1px; border: 1px solid #ea580c; }
+    .ty-wheel { position: absolute; bottom: 0px; width: 8px; height: 8px; background: #1e293b; border: 2px solid #ea580c; border-radius: 50%; z-index: 10; }
+    .w1 { left: 6px; } .w2 { left: 16px; } .w3 { left: 40px; } .w4 { right: 3px; }
+  </style>
+</head>
+<body>
+
+  <div id="sidebar">
+    <div class="header">
+      <h1>📥 GELEN ARAÇ TAKİP PANELİ</h1>
+      
+      <div class="clock-banner">
+        <div>
+          <div class="clock-title">CANLI SİSTEM SAATİ</div>
+          <div class="clock-value" id="simClock">--:--:--</div>
+        </div>
+        <span class="status-pill status-yolda" id="syncStatus">BAGLANIYOR...</span>
+      </div>
+
+      <div class="kpi-container">
+        <div class="kpi-card">
+          <div class="kpi-title">Yoldaki Araç</div>
+          <div class="kpi-value" id="kpiActive">0</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-title">Toplam Adet</div>
+          <div class="kpi-value" id="kpiPackages">0</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <input type="text" id="searchInput" class="search-input" placeholder="🔍 Plaka veya Çıkış Şehri Ara..." oninput="filterVehicles()">
+    </div>
+
+    <div class="vehicle-list" id="vehicleList"></div>
+  </div>
+
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
+
+  <script>
+    // Doğrudan tespit ettiğin kalıcı Web App linkin eklendi
+    const API_URL = "https://script.google.com/a/macros/trendyol.com/s/AKfycbwWMx2Ly095vi9DB0rt8HOSe1hInHsFFgrzipy2wkGEZ1qcRsBBGv1pPsTim1CmLpA/exec";
+
+    const cityCoords = {
+      "İzmir Gf": [38.229058, 27.321904],
+      "İzmir Torbalı": [38.229058, 27.321904],
+      "Ankara": [39.9334, 32.8597],
+      "Gebze Sc": [40.8027, 29.4307],
+      "Erguvan": [40.9800, 29.1200],
+      "Esenyurt": [41.0343, 28.6801]
+    };
+
+    let vehicles = [];
+    const map = L.map('map').setView([38.8, 29.0], 7);
+    
+    const googleStreets = L.tileLayer('http://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', { maxZoom: 20, subdomains: ['mt0','mt1','mt2','mt3'] });
+    googleStreets.addTo(map);
+
+    const destIcon = L.divIcon({
+      className: 'dest-marker',
+      html: `<div style="background:#ea580c; color:white; padding:4px 8px; border-radius:12px; font-weight:bold; font-size:10px; border:2px solid white; box-shadow:0 0 10px rgba(0,0,0,0.5);">🏬 Trendyol İzmir GF</div>`,
+      iconSize: [120, 24],
+      iconAnchor: [60, 12]
+    });
+    L.marker([38.229058, 27.321904], { icon: destIcon }).addTo(map).bindPopup("<b>Trendyol İzmir GF</b><br>Yazıbaşı, Torbalı/İzmir");
+
+    const markers = {};
+    const routeWaypoints = {};
+
+    function createTrendyolSideTruckIcon() {
+      return L.divIcon({
+        className: 'custom-side-truck-icon',
+        html: `<div class="ty-side-truck">
+                <div class="ty-side-dorse">
+                  <div class="ty-side-logo">trendyol<span>express</span></div>
+                </div>
+                <div class="ty-side-kabin">
+                  <div class="ty-side-window"></div>
+                </div>
+                <div class="ty-wheel w1"></div>
+                <div class="ty-wheel w2"></div>
+                <div class="ty-wheel w3"></div>
+                <div class="ty-wheel w4"></div>
+               </div>`,
+        iconSize: [76, 34],
+        iconAnchor: [38, 17]
+      });
+    }
+
+    function parseTimeToSeconds(timeStr) {
+      if (!timeStr || timeStr === "-" || timeStr.trim() === "") return null;
+      const matched = String(timeStr).match(/(\d{1,2}):(\d{2})/);
+      if (matched) {
+        return parseInt(matched[1]) * 3600 + parseInt(matched[2]) * 60;
+      }
+      return null;
+    }
+
+    function formatAdetText(val) {
+      if (!val || val === "-") return "-";
+      const num = parseInt(val);
+      if (!isNaN(num)) {
+        return num.toLocaleString('tr-TR') + " Adet";
+      }
+      return val + " Adet";
+    }
+
+    function loadDataFromAPI() {
+      fetch(API_URL)
+        .then(response => response.json())
+        .then(data => {
+          if (data && data.length > 0) {
+            vehicles = data;
+            document.getElementById('syncStatus').innerText = "CANLI GÜNCEL";
+            document.getElementById('syncStatus').style.color = "#34d399";
+            renderVehicles();
+          } else {
+            document.getElementById('syncStatus').innerText = "VERİ BEKLENİYOR";
+          }
+        })
+        .catch(err => {
+          console.error(err);
+          document.getElementById('syncStatus').innerText = "BAĞLANTI HATASI";
+        });
+    }
+
+    function renderVehicles() {
+      document.getElementById('vehicleList').innerHTML = "";
+
+      vehicles.forEach((v, idx) => {
+        v.cikisSec = parseTimeToSeconds(v.cikisSaat);
+        v.planlananVarisSec = parseTimeToSeconds(v.tahminiVaris);
+
+        const start = cityCoords[v.cikis] || [39.9334, 32.8597];
+        const end = cityCoords[v.varis] || [38.229058, 27.321904];
+
+        if (!routeWaypoints[idx]) {
+          const router = L.Routing.control({
+            waypoints: [L.latLng(start[0], start[1]), L.latLng(end[0], end[1])],
+            lineOptions: { styles: [{ color: '#ea580c', weight: 5, opacity: 0.8 }] },
+            createMarker: () => null,
+            addWaypoints: false,
+            draggableWaypoints: false
+          }).addTo(map);
+
+          router.on('routesfound', function(e) {
+            routeWaypoints[idx] = e.routes[0].coordinates;
+            
+            if (!markers[idx]) {
+              const customIcon = createTrendyolSideTruckIcon();
+              const marker = L.marker([start[0], start[1]], { icon: customIcon }).addTo(map)
+                .bindPopup(`
+                  <div style="color:#0f172a; font-family:sans-serif; font-size:12px;">
+                    <b>🚚 Plaka: ${v.plaka}</b> (${v.tip})<br>
+                    <b>📍 Çıkış Yeri:</b> ${v.cikis}<br>
+                    <b>🎯 Varış Yeri:</b> Trendyol İzmir GF (Torbalı)<br>
+                    <b>⏰ Kalkış Saati:</b> ${v.cikisSaat}<br>
+                    <b>🏁 Tahmini Varış:</b> <b style="color:#ea580c">${v.tahminiVaris}</b><br>
+                    <b>📦 Adet:</b> ${formatAdetText(v.gelenAdet)}
+                  </div>
+                `);
+              markers[idx] = marker;
+            }
+          });
+        }
+
+        createCard(v, idx);
+      });
+    }
+
+    function createCard(v, idx) {
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.id = `card-${idx}`;
+      card.onclick = () => selectVehicle(idx);
+
+      card.innerHTML = `
+        <div class="card-header">
+          <span class="plaka">🚛 ${v.plaka}</span>
+          <span class="vehicle-type">${v.tip}</span>
+        </div>
+        <div class="card-body">
+          <div>📍 Çıkış: <b>${v.cikis}</b></div>
+          <div>🎯 Varış: <b>İzmir GF (Torbalı)</b></div>
+          <div>📦 Adet: <b>${formatAdetText(v.gelenAdet)}</b></div>
+          <div>🚀 Çıkış Saati: ${v.cikisSaat}</div>
+          <div style="grid-column: span 2;">🏁 Tahmini Varış: <b style="color:#f97316">${v.tahminiVaris}</b></div>
+        </div>
+        <div class="progress-container">
+          <div class="eta-text">
+            <span id="status-text-${idx}">Yolda</span>
+            <span id="eta-left-${idx}">Hesaplanıyor...</span>
+          </div>
+          <div class="progress-bar-bg">
+            <div class="progress-bar-fill" id="progress-${idx}"></div>
+          </div>
+        </div>
+      `;
+      document.getElementById('vehicleList').appendChild(card);
+    }
+
+    function selectVehicle(idx) {
+      vehicles.forEach((_, i) => {
+        const el = document.getElementById(`card-${i}`);
+        if (el) el.classList.remove('selected');
+      });
+      document.getElementById(`card-${idx}`).classList.add('selected');
+
+      if (markers[idx]) {
+        map.flyTo(markers[idx].getLatLng(), 10);
+        markers[idx].openPopup();
+      }
+    }
+
+    function filterVehicles() {
+      const q = document.getElementById('searchInput').value.toLowerCase();
+      vehicles.forEach((v, idx) => {
+        const match = v.plaka.toLowerCase().includes(q) || v.cikis.toLowerCase().includes(q);
+        const el = document.getElementById(`card-${idx}`);
+        if (el) el.style.display = match ? 'block' : 'none';
+      });
+    }
+
+    function startSimulationEngine() {
+      setInterval(() => {
+        const now = new Date();
+        const hh = String(now.getHours()).padStart(2, '0');
+        const mm = String(now.getMinutes()).padStart(2, '0');
+        const ss = String(now.getSeconds()).padStart(2, '0');
+        document.getElementById('simClock').innerText = `${hh}:${mm}:${ss}`;
+
+        const currentSimSeconds = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+
+        let activeCount = 0;
+        let totalPackages = 0;
+
+        vehicles.forEach((v, idx) => {
+          const statusText = document.getElementById(`status-text-${idx}`);
+          const etaLeft = document.getElementById(`eta-left-${idx}`);
+          const bar = document.getElementById(`progress-${idx}`);
+          const points = routeWaypoints[idx];
+
+          if (v.cikisSec === null) {
+            activeCount++;
+            const numPkg = parseInt(v.gelenAdet) || 0;
+            totalPackages += numPkg;
+
+            if (statusText) statusText.innerText = 'Yolda';
+            if (etaLeft) etaLeft.innerText = 'Çıkış Saati Bekleniyor';
+            if (bar) bar.style.width = '20%';
+
+            if (points && points.length > 0 && markers[idx]) {
+              markers[idx].setLatLng([points[0].lat, points[0].lng]);
+            }
+          } 
+          else {
+            const actualVarisSec = v.planlananVarisSec || (v.cikisSec + 18000);
+
+            if (currentSimSeconds >= v.cikisSec && currentSimSeconds < actualVarisSec) {
+              activeCount++;
+              const numPkg = parseInt(v.gelenAdet) || 0;
+              totalPackages += numPkg;
+
+              const totalTripDuration = actualVarisSec - v.cikisSec;
+              const elapsed = currentSimSeconds - v.cikisSec;
+              const driveProgress = Math.min(elapsed / totalTripDuration, 1);
+
+              if (points && points.length > 0 && markers[idx]) {
+                const currentPointIndex = Math.floor(driveProgress * (points.length - 1));
+                const currentLatLng = points[currentPointIndex];
+                if (currentLatLng) markers[idx].setLatLng([currentLatLng.lat, currentLatLng.lng]);
+              }
+
+              if (bar) bar.style.width = `${Math.round(driveProgress * 100)}%`;
+
+              const kalanSaniye = Math.max(actualVarisSec - currentSimSeconds, 0);
+              const sa = Math.floor(kalanSaniye / 3600);
+              const dk = Math.floor((kalanSaniye % 3600) / 60);
+
+              if (statusText) statusText.innerText = 'Yolda';
+              if (etaLeft) etaLeft.innerText = `Kalan: ${sa}s ${dk}dk`;
+            } 
+            else if (currentSimSeconds >= actualVarisSec) {
+              if (statusText) statusText.innerText = 'Varış Yapıldı';
+              if (etaLeft) etaLeft.innerText = 'Tesisine Ulaştı';
+              if (bar) bar.style.width = '100%';
+
+              if (points && markers[idx]) {
+                markers[idx].setLatLng([points[points.length - 1].lat, points[points.length - 1].lng]);
+              }
+            } 
+            else {
+              if (statusText) statusText.innerText = 'Yolda';
+              const bekleyenMins = Math.floor((v.cikisSec - currentSimSeconds) / 60);
+              if (etaLeft) etaLeft.innerText = `Kalkışa: ${bekleyenMins} dk`;
+              if (bar) bar.style.width = '5%';
+            }
+          }
+        });
+
+        document.getElementById('kpiActive').innerText = activeCount;
+        document.getElementById('kpiPackages').innerText = totalPackages.toLocaleString('tr-TR');
+
+      }, 1000);
+
+      setInterval(loadDataFromAPI, 15000);
+    }
+
+    loadDataFromAPI();
+    startSimulationEngine();
+  </script>
+</body>
+</html>
